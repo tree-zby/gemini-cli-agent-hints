@@ -1,0 +1,89 @@
+{
+  "kind": "seam-level wire capture (real Gemini CLI + real hook + local SSE stub)",
+  "harness": {
+    "binary": "gemini-cli bundle built from 60f8082 with patches/0001",
+    "hook": "node dist/cli.js hook (BeforeModel)",
+    "endpoint": "http://127.0.0.1:8899 (local stub)",
+    "prompt": "run echo hi --yolo"
+  },
+  "requests": [
+    {
+      "index": 1,
+      "url": "/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse",
+      "hint_header_present": true,
+      "hint": {
+        "session": {
+          "session_id": "ah-a7f5ff060d7706c2fe672544",
+          "call_index": 1,
+          "epoch": 0,
+          "state": "start"
+        },
+        "priority_control": {
+          "priority": {
+            "level": 3,
+            "reason": "user_waiting"
+          }
+        },
+        "cache_control": {
+          "type": "ephemeral",
+          "ttl_s": 600,
+          "msg_offset": 1
+        }
+      },
+      "state": "start",
+      "call_index": 1,
+      "epoch": 0,
+      "msg_offset": 1,
+      "priority_level": 3,
+      "priority_reason": "user_waiting",
+      "has_context_management": false,
+      "body_mentions_hint": false,
+      "body_bytes": 46984
+    },
+    {
+      "index": 2,
+      "url": "/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse",
+      "hint_header_present": true,
+      "hint": {
+        "session": {
+          "session_id": "ah-a7f5ff060d7706c2fe672544",
+          "call_index": 2,
+          "epoch": 0,
+          "state": "append"
+        },
+        "priority_control": {
+          "priority": {
+            "level": 1,
+            "reason": "critical_path"
+          }
+        },
+        "cache_control": {
+          "type": "ephemeral",
+          "ttl_s": 600,
+          "msg_offset": 3
+        }
+      },
+      "state": "append",
+      "call_index": 2,
+      "epoch": 0,
+      "msg_offset": 3,
+      "priority_level": 1,
+      "priority_reason": "critical_path",
+      "has_context_management": false,
+      "body_mentions_hint": false,
+      "body_bytes": 47451
+    }
+  ],
+  "checks": {
+    "two_model_requests_captured": true,
+    "every_request_carries_a_hint": true,
+    "first_is_start": true,
+    "second_is_append": true,
+    "call_index_increments": true,
+    "offset_tracks_wire_contents": true,
+    "tool_continuation_is_critical_path": true,
+    "opening_turn_is_user_waiting": true,
+    "ordinary_requests_have_no_context_management": true,
+    "body_has_no_hint_fields": true
+  }
+}

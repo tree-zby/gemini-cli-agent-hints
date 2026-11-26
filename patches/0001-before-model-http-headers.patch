@@ -1,0 +1,139 @@
+diff --git a/packages/core/src/core/geminiChat.ts b/packages/core/src/core/geminiChat.ts
+index 688bff9..8989066 100644
+--- a/packages/core/src/core/geminiChat.ts
++++ b/packages/core/src/core/geminiChat.ts
+@@ -1243,6 +1243,15 @@ export class GeminiChat {
+         if (beforeModelResult.modifiedConfig) {
+           Object.assign(config, beforeModelResult.modifiedConfig);
+         }
++        if (beforeModelResult.modifiedHttpHeaders) {
++          config.httpOptions = {
++            ...config.httpOptions,
++            headers: {
++              ...config.httpOptions?.headers,
++              ...beforeModelResult.modifiedHttpHeaders,
++            },
++          };
++        }
+         if (
+           beforeModelResult.modifiedContents &&
+           Array.isArray(beforeModelResult.modifiedContents)
+diff --git a/packages/core/src/hooks/hookEventHandler.ts b/packages/core/src/hooks/hookEventHandler.ts
+index 32bd7f8..f6bd582 100644
+--- a/packages/core/src/hooks/hookEventHandler.ts
++++ b/packages/core/src/hooks/hookEventHandler.ts
+@@ -221,9 +221,32 @@ export class HookEventHandler {
+   async fireBeforeModelEvent(
+     llmRequest: GenerateContentParameters,
+   ): Promise<AggregatedHookResult> {
++    const contents = llmRequest.contents;
++    const contentList = Array.isArray(contents)
++      ? contents
++      : contents
++        ? [contents]
++        : [];
++    const hasToolParts = contentList.some(
++      (content) =>
++        typeof content === 'object' &&
++        content !== null &&
++        'parts' in content &&
++        Array.isArray(content.parts) &&
++        content.parts.some(
++          (part) =>
++            typeof part === 'object' &&
++            part !== null &&
++            ('functionCall' in part || 'functionResponse' in part),
++        ),
++    );
+     const input: BeforeModelInput = {
+       ...this.createBaseInput(HookEventName.BeforeModel),
+       llm_request: defaultHookTranslator.toHookLLMRequest(llmRequest),
++      before_model_meta: {
++        wire_message_count: contentList.length,
++        has_tool_parts: hasToolParts,
++      },
+     };
+ 
+     return this.executeHooks(
+diff --git a/packages/core/src/hooks/hookSystem.ts b/packages/core/src/hooks/hookSystem.ts
+index 0b94325..57417ec 100644
+--- a/packages/core/src/hooks/hookSystem.ts
++++ b/packages/core/src/hooks/hookSystem.ts
+@@ -52,6 +52,8 @@ export interface BeforeModelHookResult {
+   modifiedModel?: string;
+   /** Modified config (if not blocked) */
+   modifiedConfig?: GenerateContentConfig;
++  /** Extra outbound HTTP headers requested by the hook (if not blocked) */
++  modifiedHttpHeaders?: Record<string, string>;
+   /** Modified contents (if not blocked) */
+   modifiedContents?: ContentListUnion;
+ }
+@@ -297,6 +299,7 @@ export class HookSystem {
+           modifiedModel: modifiedRequest?.model,
+           modifiedConfig: modifiedRequest?.config,
+           modifiedContents: modifiedRequest?.contents,
++          modifiedHttpHeaders: beforeModelOutput.getHttpHeaders(),
+         };
+       }
+ 
+diff --git a/packages/core/src/hooks/types.ts b/packages/core/src/hooks/types.ts
+index 418dcde..3174458 100644
+--- a/packages/core/src/hooks/types.ts
++++ b/packages/core/src/hooks/types.ts
+@@ -144,6 +144,19 @@ export interface HookInput {
+   cwd: string;
+   hook_event_name: string;
+   timestamp: string;
++  /**
++   * Wire-shape facts about the request this event previews.
++   *
++   * Only BeforeModel sets this. `llm_request.messages` is a text-only
++   * projection, so hooks that need exact offsets or tool-loop detection
++   * must read these numbers instead of guessing from the projection.
++   */
++  before_model_meta?: {
++    /** Number of `contents` entries that will be sent. */
++    wire_message_count: number;
++    /** True when any content part is a functionCall or functionResponse. */
++    has_tool_parts: boolean;
++  };
+ }
+ 
+ /**
+@@ -368,6 +381,27 @@ export class BeforeModelHookOutput extends DefaultHookOutput {
+     return undefined;
+   }
+ 
++  /**
++   * Extra HTTP headers requested by the hook.
++   *
++   * Kept outside `llm_request.config` on purpose: the hook translator only
++   * carries generation parameters, so headers declared there would be lost
++   * when the SDK request is rebuilt.
++   */
++  getHttpHeaders(): Record<string, string> | undefined {
++    const raw: unknown = this.hookSpecificOutput?.['http_headers'];
++    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
++      return undefined;
++    }
++    const headers: Record<string, string> = {};
++    for (const [name, value] of Object.entries(raw)) {
++      if (typeof value === 'string' && value.length > 0) {
++        headers[name] = value;
++      }
++    }
++    return Object.keys(headers).length > 0 ? headers : undefined;
++  }
++
+   /**
+    * Apply modifications to LLM request
+    */
+@@ -683,6 +717,8 @@ export interface BeforeModelOutput extends HookOutput {
+     hookEventName: 'BeforeModel';
+     llm_request?: Partial<LLMRequest>;
+     llm_response?: LLMResponse;
++    /** Extra outbound HTTP headers; merged into config.httpOptions.headers. */
++    http_headers?: Record<string, string>;
+   };
+ }
+ 
